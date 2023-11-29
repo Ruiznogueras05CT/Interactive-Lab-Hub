@@ -59,6 +59,9 @@ Servo num 12 is the right shoulder
 """
 
 while True:
+
+    time.sleep(0.5)
+    
     for servo_num in servo_numbers:
         
         move_servo(servo_num, SERVOMIN, SERVOMAX, 1)
