@@ -16,7 +16,7 @@ import queue
 
 
 
-model_path = '/home/ben/Interactive-Lab-Hub/final/pose_landmarker_lite.task'
+model_path = '/home/gilbertoe.ruiz/Interactive-Lab-Hub/Final Project/pose_landmarker.task'
 
 global voter
 voter = 0
