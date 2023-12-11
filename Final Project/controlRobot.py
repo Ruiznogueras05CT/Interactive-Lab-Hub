@@ -20,55 +20,9 @@ SERVOMIN = 150  # this is the 'minimum' pulse length count (out of 4096)
 SERVOMAX = 600  # this is the 'maximum' pulse length count (out of 4096)
 
 # Servo numbers for each servo at angle 0
-servo_numbers = [0, 1, 2, 12, 13, 14]
-
-# Function to set the servo pulse length in seconds
-def set_servo_pulse(n, pulse):
-    pulselength = 1000000.0  # 1,000,000 us per second
-    pulselength /= 60.0  # 60 Hz
-    pulselength /= 4096.0  # 12 bits of resolution
-    pulse *= 1000.0
-    pulse /= pulselength
-    kit.servo[n].angle = pulse
+servo = [0, 1, 2, 12, 13, 14]
 
 
-def move_servo(servo_num, start, end, step):
-    for pulselen in range(start, end, step):
-        # Normalize pulselen to the servo's angle range (0 to 180)
-        normalized_angle = (pulselen - SERVOMIN) / (SERVOMAX - SERVOMIN) * 180
-
-        # Reverse direction for servos 2, 13, and 14
-        if servo_num in [2, 13, 14]:
-            normalized_angle = 180 - normalized_angle
-
-        kit.servo[servo_num].angle = normalized_angle
-        time.sleep(0.001)
-    # print(normalized_angle)
-
-
-# Set all servos to angle 0
-def test():
-    for servo_num in servo_numbers:
-        normalized_angle = 0
-
-        if servo_num in [2, 13, 14]:
-            normalized_angle = 180 - normalized_angle
-        
-        kit.servo[servo_num].angle = normalized_angle
-
-    while True:
-        time.sleep(0.5)
-        for servo_num in servo_numbers:
-            move_servo(servo_num, SERVOMIN, SERVOMAX, 1)
-
-            time.sleep(0.5)
-
-            move_servo(servo_num, SERVOMAX, SERVOMIN, -1)
-
-            time.sleep(0.5)
-
-
-        # Main loop
 """
 Servo num 0 is the left hand
 Servo num 1 is the left elbow
@@ -92,19 +46,47 @@ servo_dict = {
 global last_msg
 last_msg = ''
 
-def set_zero():
-    for servo_num in servo_numbers:
-        normalized_angle = 0
+# Function to initialize all servos to the 0 position
+def initialize_servos():
+    for servo_num in servo:
+        set_servo_pulse(servo_num, 0)
 
-        if servo_num in [2, 13, 14]:
-            normalized_angle = 180 - normalized_angle
-            
-        kit.servo[servo_num].angle = normalized_angle
-        time.sleep(0.001)
+def set_servo_pulse(n, angle):
+    # Limit the angle to the valid range (0 to 180)
+    angle = max(0, min(180, angle))
+    if n in [2, 13, 14]:
+        angle = 180 - angle
+    kit.servo[n].angle = angle
+    time.sleep(0.01)
 
+def move_servos(servoNum, startAngle, endAngle):
+    # Determine the direction of movement
+    step = 1 if startAngle < endAngle else -1
+    print(type(startAngle))
+    print(type(endAngle))
+
+    # Loop from startAngle to endAngle
+    for angle in range(startAngle, endAngle, step):
+        set_servo_pulse(servoNum, angle)
+        time.sleep(0.0001)
+        
+def move_wrapper(servo_num, angle):
+    start = round(kit.servo[servo_num].angle)
+    move_servos(servo_num, start, angle)
+
+def message_to_servo_angles(message):
+    print('message to servo angles')
+    print('message is:', message)
+    
+    landmark_msgs = message.split(LINE_DELIMITER)
+    
+    todo_list = [x.split('#') for x in landmark_msgs if x != '']
+    retval = [[servo_dict[x[0]], int(x[1])] for x in todo_list]
+    print('retval:', retval)
+    return retval
 
 def main():
-    set_zero()
+    initialize_servos()
     time.sleep(0.05)
     client = mqtt.Client(str(uuid.uuid1()))
     client.tls_set(cert_reqs=ssl.CERT_NONE)
@@ -116,6 +98,17 @@ def main():
     client.subscribe(topic)
     client.on_message = on_message
     client.loop_forever()
+
+    try:
+        while True:
+            pass
+
+    except KeyboardInterrupt:
+        # Handle keyboard interrupt (e.g., script manually closed)
+        print("Script interrupted. Resetting servos to zero.")
+        
+        # Reset all servos to zero
+        initialize_servos()
 
 def on_message(client, userdata, msg):
     global last_msg
@@ -133,25 +126,13 @@ def on_message(client, userdata, msg):
         print('todo is;', todo)
         for elem in todo:
             print('elem is:', elem)
-            move_servo(elem[0], SERVOMAX, SERVOMIN, elem[1])
+            move_wrapper(elem[0], elem[1])
             print('called move_servo')
     time.sleep(0.5)
     
 #shoulder rotation should be based on y distance of elbow from shoulder
 #next servo out should be x distance from elbow to shoulder
         
-def message_to_servo_angles(message):
-    print('message to servo angles')
-    print('message is:', message)
-    
-    landmark_msgs = message.split(LINE_DELIMITER)
-    
-    todo_list = [x.split('#') for x in landmark_msgs if x != '']
-    retval = [[servo_dict[x[0]], int(x[1])] for x in todo_list]
-    print('retval:', retval)
-    
-    return retval
-
 
 if __name__=="__main__":
     main()
