@@ -135,26 +135,12 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
     row_size = 50  # pixels
     left_margin = 24  # pixels
     text_color = (0, 0, 0)  # black
+    text_color2 = (255, 255, 255)
     font_size = 1
     font_thickness = 1
     fps_avg_frame_count = 10
     overlay_alpha = 0.5
     mask_color = (100, 100, 0)  # cyan
-
-    def display_coords(name, cur_pos, image_width, image_height):
-        """Display the x, y, and z coordinates of the landmark in pixel coordinates."""
-        if cur_pos:
-            x_coord = int(cur_pos.x * image_width)
-            y_coord = int(cur_pos.y * image_height)
-            z_coord = cur_pos.z
-
-            # Display coordinates in the terminal
-            print(f"{name} - X: {x_coord}, Y: {y_coord}, Z: {z_coord}")
-
-            # Optionally, you can also draw the coordinates on the image here if needed.
-            # For example, you can use cv2.putText for this purpose.
-        else:
-            print(f"{name} landmark not found.")
 
     def save_result(result: vision.PoseLandmarkerResult,
                     unused_output_image: mp.Image, timestamp_ms: int):
@@ -191,43 +177,71 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
                     msg += pose_dict[i] + 'z'
                     cur_pos = pl[0][i]
                     #USE HANDS TO DETECT SHOULDER ROTATION
-                    if 'shoulder' in pose_dict[i] or 'elbow' in pose_dict[i]:
-                        # print('-' * 50)
+                    if 'shoulder' in pose_dict[i]:
+                        print('-'*50)
                         xchange = cur_pos.x - init_positions[i].x
                         ychange = cur_pos.y - init_positions[i].y
                         zchange = cur_pos.z - init_positions[i].z
-                        # print('change for: ', pose_dict[i], 'x : ', xchange)
-                        # print('change for: ', pose_dict[i], 'y : ', ychange)
-                        # print('change for: ', pose_dict[i], 'z : ', zchange)
-                        # print('-' * 50)
-
-                        # Call display_coords for left and right shoulders, left and right elbows
-                        if pose_dict[i] == 'left_shoulder':
-                            display_coords('Left Shoulder', cur_pos, width, height)
-                        
-                        elif pose_dict[i] == 'right_shoulder':
-                            display_coords('Right Shoulder', cur_pos, width, height)
-                       
-                        elif pose_dict[i] == 'left_elbow':
-                            display_coords('Left Elbow', cur_pos, width, height)
-                        
-                        elif pose_dict[i] == 'right_elbow':
-                            display_coords('Right Elbow', cur_pos, width, height)
-
+                        print('change for: ', pose_dict[i], 'x : ', xchange)
+                        print('change for: ', pose_dict[i], 'y : ', ychange)
+                        print('change for: ', pose_dict[i], 'z : ', zchange)
+                        print('-'*50)
                         fn = f'{pose_dict[i]}_changes.csv'
-                        if not (os.path.isfile(fn)):
+                        if not(os.path.isfile(fn)):
                             f = open(fn, 'w+')
                             f.write('x,y,z\n')
                             f.close()
-
+                            
                         f = open(fn, 'a')
                         s = str(xchange) + ',' + str(ychange) + ',' + str(zchange) + '\n'
                         f.write(s)
                         f.close()
+                        
+                    angle = pos_to_angle(cur_pos.z, 'z', pose_dict[i])
+                    
 
-                angle = pos_to_angle(cur_pos.z, 'z', pose_dict[i])
+                    
+                    """
+                    print('-'*50)
+                    fi = open(f'{pose_dict[i]}.txt', 'a+')
+                    fi.write('\n')
+                    fi.write(repr(pl[0][i]))
+                    fi.close()
+                    print('wrote', pose_dict[i])
+                    #print(f'pl {pose_dict[i]}', pl[0][i])
+                    print('-'*50)
+                    change = pl[0][i].y - init_positions[i].y
 
+                    print('change:', change)
+                    if (np.abs(change) < threshold[j]):
+                        print('threshold not met')
+                    else:
+                        print('met!')
+                        if change > 0:
+                            voter[j] += 1
+                        else:
+                            voter[j] -= 1
+                            
+                    if voter[j] >= 5:
+                        client.publish(f'{topic_base}/{pose_dict[i]}', 1)
+                        print('*'*10)
+                        print(f'sent {pose_dict[i]}, 1')
+                        
+                        
+                    elif voter[j] <= -5:
+                        client.publish(f'{topic_base}/{pose_dict[i]}', -1)
+                        print('*'*10)
+                        print(f'sent {pose_dict[i]}, -1')
+                        
+                    
+                    print('voter is:', voter)
+                    print('iters is:', iters)
+                    """
                 iters += 1
+
+    
+        
+
         
 
     # Initialize the pose landmarker model
@@ -271,6 +285,7 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
         if DETECTION_RESULT:
             # Draw landmarks.
             for pose_landmarks in DETECTION_RESULT.pose_landmarks:
+                
                 # Draw the pose landmarks.
                 pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
                 pose_landmarks_proto.landmark.extend([
@@ -278,6 +293,46 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
                                                     z=landmark.z) for landmark
                     in pose_landmarks
                 ])
+
+                # Draw landmarks and coordinates
+                for i, landmark in enumerate(pose_landmarks_proto.landmark):
+                    x_coord = int(landmark.x * width)
+                    y_coord = int(landmark.y * height)
+                    z_coord = landmark.z
+
+                    # Display coordinates next to the landmark
+                    if i == 11: #left shoulder
+                        y_shift = -110
+                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_location = (x_coord, y_coord + y_shift)
+                        cv2.putText(current_frame, coord_text, coord_location,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    font_size, text_color2, font_thickness, cv2.LINE_AA)
+                   
+                    if i == 12: #right shoulder
+                        y_shift = -110
+                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_location = (x_coord, y_coord + y_shift)
+                        cv2.putText(current_frame, coord_text, coord_location,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    font_size, text_color2, font_thickness, cv2.LINE_AA)
+
+                    if i == 13: #left elbow
+                        y_shift = -110
+                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_location = (x_coord, y_coord + y_shift)
+                        cv2.putText(current_frame, coord_text, coord_location,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    font_size, text_color2, font_thickness, cv2.LINE_AA)
+                    
+                    if i == 14: #right elbow
+                        y_shift = -110
+                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_location = (x_coord, y_coord + y_shift)
+                        cv2.putText(current_frame, coord_text, coord_location,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    font_size, text_color2, font_thickness, cv2.LINE_AA)
+
                 mp_drawing.draw_landmarks(
                     current_frame,
                     pose_landmarks_proto,
