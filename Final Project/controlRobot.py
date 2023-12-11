@@ -86,22 +86,20 @@ def message_to_servo_angles(message):
     return retval
 
 def main():
-    initialize_servos()
-    time.sleep(0.05)
-    client = mqtt.Client(str(uuid.uuid1()))
-    client.tls_set(cert_reqs=ssl.CERT_NONE)
-    client.username_pw_set('idd', 'device@theFarm')
-    client.connect(
-        'farlab.infosci.cornell.edu',
-        port=8883)
-    topic = 'IDD/cool_table/robit'
-    client.subscribe(topic)
-    client.on_message = on_message
-    client.loop_forever()
 
     try:
-        while True:
-            pass
+        initialize_servos()
+        time.sleep(0.05)
+        client = mqtt.Client(str(uuid.uuid1()))
+        client.tls_set(cert_reqs=ssl.CERT_NONE)
+        client.username_pw_set('idd', 'device@theFarm')
+        client.connect(
+            'farlab.infosci.cornell.edu',
+            port=8883)
+        topic = 'IDD/cool_table/robit'
+        client.subscribe(topic)
+        client.on_message = on_message
+        client.loop_forever()
 
     except KeyboardInterrupt:
         # Handle keyboard interrupt (e.g., script manually closed)
