@@ -11,7 +11,7 @@ SERVOMIN = 150  # this is the 'minimum' pulse length count (out of 4096)
 SERVOMAX = 600  # this is the 'maximum' pulse length count (out of 4096)
 
 # Servo numbers for each servo at angle 0
-servo_numbers = [0, 1, 2, 3, 12, 13, 14]
+servo_numbers = [0, 1, 2, 3, 12, 13, 14] # 0, 1, 2, 3, 12, 13, 14
 
 # Function to set the servo pulse length in seconds
 def set_servo_pulse(n, pulse):
@@ -34,7 +34,8 @@ def move_servo(servo_num, start, end, step):
 
         kit.servo[servo_num].angle = normalized_angle
         time.sleep(0.001)
-    print(normalized_angle)
+        # print(normalized_angle)
+    
 
 
 # Set all servos to angle 0
