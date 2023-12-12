@@ -34,12 +34,12 @@ def move_servos(servoNum, startAngle, endAngle):
     # Loop from startAngle to endAngle
     for angle in range(startAngle, endAngle, step):
         set_servo_pulse(servoNum, angle)
-        time.sleep(0.0001)
+        time.sleep(0.001)
     
     # Optionally, add a short delay at the end of the loop
     time.sleep(0.2)
 
-servo = [0, 1, 2, 3, 12, 13, 14]
+servo = [0, 1, 2, 12, 13, 14]
 
 initialize_servos()
 
