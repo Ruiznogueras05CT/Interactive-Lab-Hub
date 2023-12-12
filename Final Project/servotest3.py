@@ -39,7 +39,7 @@ def move_servos(servoNum, startAngle, endAngle):
     # Optionally, add a short delay at the end of the loop
     time.sleep(0.2)
 
-servo = [0, 1, 2, 12, 13, 14]
+servo = [3, 0, 1, 2, 12, 13, 14]
 
 initialize_servos()
 

@@ -37,6 +37,8 @@ import queue
 import os
 import glob
 import pandas as pd
+import math
+
 
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
@@ -79,8 +81,8 @@ pose_dict = {
     16:'right_wrist',
     # 'left_pinky':17,
     # 'right_pinky':18,
-    # 'left_index':19,
-    # 'right_index':20,
+    19:'left_index',
+    20:'right_index',
     # 'left_thumb':21,
     # 'right_thumb':22,
     # 'left_hip':23,
@@ -94,11 +96,21 @@ pose_dict = {
     # 'left_foot_index':31,
     # 'right_foot_index':32
 }
+reverse_pose_dict = {}
+for elem in [{y:x} for x,y in zip(list(pose_dict.keys()), list(pose_dict.values()))]:
+    reverse_pose_dict.update(elem)
 
-topic_base = 'IDD/cool_table/robit'
+topic = 'IDD/cool_table/robit'
 pd_len = len(list(pose_dict.keys()))
 voter = [0] * pd_len
 threshold = [0.1] * pd_len
+INTERNAL_DELIMITER = '#'
+LINE_DELIMITER = '*'
+
+SHOULDER_RANGE = [100, 170]
+LFLEXOR_XZ_RANGE = [0.8, 4.0]
+LFLEXOR_XY_RANGE = [-15, 15]
+HEAD_RANGE = [0, 200]
 
 def pl_landmark_to_angle(pl_landmark):
     return pl_landmark
@@ -144,7 +156,7 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
 
     def save_result(result: vision.PoseLandmarkerResult,
                     unused_output_image: mp.Image, timestamp_ms: int):
-        global FPS, COUNTER, START_TIME, DETECTION_RESULT, iters, voter, client, topic, init_positions, threshold, iters, pd_len
+        global FPS, COUNTER, START_TIME, DETECTION_RESULT, iters, voter, client, topic, init_positions, threshold, iters, pd_len, INTERNAL_DELIMITER, LINE_DELIMITER
 
         # Calculate the FPS
         if COUNTER % fps_avg_frame_count == 0:
@@ -154,96 +166,123 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
         DETECTION_RESULT = result
         COUNTER += 1
         pl = result.pose_landmarks
-        #print('pl:', pl)
-        print('COUNTER IS:', COUNTER)
-
         
-        
+        msg = ''
         print("-"*100)
         if len(pl) == 0:
             print('no landmarks!')
-            client.publish(f'{topic_base}/lands', 'no_land')
-        else:
-            print("len:", len(pl[0]))
+            msg = 'no_land'
+        else:            
             if init_positions == []:
                 print('initing')
                 init_positions = pl[0]
-            else:
-                if iters > 10:
-                    iters = 0
-                    voter = [0] * pd_len
-                msg = ''
-                for i,j in zip(list(pose_dict.keys()), range(0, pd_len)):
-                    msg += pose_dict[i] + 'z'
-                    cur_pos = pl[0][i]
-                    #USE HANDS TO DETECT SHOULDER ROTATION
-                    if 'shoulder' in pose_dict[i]:
-                        print('-'*50)
-                        xchange = cur_pos.x - init_positions[i].x
-                        ychange = cur_pos.y - init_positions[i].y
-                        zchange = cur_pos.z - init_positions[i].z
-                        print('change for: ', pose_dict[i], 'x : ', xchange)
-                        print('change for: ', pose_dict[i], 'y : ', ychange)
-                        print('change for: ', pose_dict[i], 'z : ', zchange)
-                        print('-'*50)
-                        fn = f'{pose_dict[i]}_changes.csv'
-                        if not(os.path.isfile(fn)):
-                            f = open(fn, 'w+')
-                            f.write('x,y,z\n')
-                            f.close()
-                            
-                        f = open(fn, 'a')
-                        s = str(xchange) + ',' + str(ychange) + ',' + str(zchange) + '\n'
-                        f.write(s)
-                        f.close()
-                        
-                    angle = pos_to_angle(cur_pos.z, 'z', pose_dict[i])
-                    
+                msg = 'init'
 
-                    
-                    """
-                    print('-'*50)
-                    fi = open(f'{pose_dict[i]}.txt', 'a+')
-                    fi.write('\n')
-                    fi.write(repr(pl[0][i]))
-                    fi.close()
-                    print('wrote', pose_dict[i])
-                    #print(f'pl {pose_dict[i]}', pl[0][i])
-                    print('-'*50)
-                    change = pl[0][i].y - init_positions[i].y
+            #calc shoulder
+            lands = pl[0]
+            nose_to_lshoulder = [lands[0], lands[11]]
+            rshoulder_to_wrist = [lands[12], lands[16]]#lands[14]]
 
-                    print('change:', change)
-                    if (np.abs(change) < threshold[j]):
-                        print('threshold not met')
-                    else:
-                        print('met!')
-                        if change > 0:
-                            voter[j] += 1
-                        else:
-                            voter[j] -= 1
-                            
-                    if voter[j] >= 5:
-                        client.publish(f'{topic_base}/{pose_dict[i]}', 1)
-                        print('*'*10)
-                        print(f'sent {pose_dict[i]}, 1')
-                        
-                        
-                    elif voter[j] <= -5:
-                        client.publish(f'{topic_base}/{pose_dict[i]}', -1)
-                        print('*'*10)
-                        print(f'sent {pose_dict[i]}, -1')
-                        
-                    
-                    print('voter is:', voter)
-                    print('iters is:', iters)
-                    """
-                iters += 1
+            lshoulder_to_wrist = [lands[11], lands[15]]#lands[13]]
 
-    
+            chest = [lands[12], lands[11]]
+            ears = [lands[7], lands[8]]
+            
+            rshangle = calculate_angle(nose_to_lshoulder, lshoulder_to_wrist, ['y', 'z'])
+            lshangle = calculate_angle(nose_to_lshoulder, rshoulder_to_wrist, ['y', 'z'])
+
+
+            lflexor_xz_angle = (lands[16].x*width - lands[12].x*width)/(lands[8].x*width - lands[7].x*width)
+            lflexor_xy_angle = (lands[16].y*height - lands[12].y*height)/(lands[0].y*height - lands[10].y*height)    
+
+            rflexor_xz_angle = (lands[15].x*width - lands[11].x*width)/(lands[7].x*width - lands[8].x*width)
+            rflexor_xy_angle = (lands[15].y*height - lands[11].y*height)/(lands[0].y*height - lands[9].y*height)    
+
+            lflangle_xz = trig_angle_to_servo_angle(lflexor_xz_angle, 'lflexor_xz')
+            lflangle_xy = trig_angle_to_servo_angle(lflexor_xy_angle, 'lflexor_xy')
+
+            rflangle_xz = trig_angle_to_servo_angle(rflexor_xz_angle, 'lflexor_xz')
+            rflangle_xy = trig_angle_to_servo_angle(rflexor_xy_angle, 'lflexor_xy')
+
+            head = (lands[0].x*width - lands[12].x*width)
+            hangle = round(trig_angle_to_servo_angle(head, 'head'))
+            hangle = 180 - max(0, min(180, hangle))
+            
+            print('#'*50)
+            print('head is:', head)
+            print('hangle is:', hangle)
+            """
+            print('#'*50)
+            #print('LFANGLE IS:', lflangle)
+            print("lflexor_xy is:", lflexor_xy_angle)
+            print("lflexor_xz is:", lflexor_xz_angle)
+            print("lflangle_xz is:", lflangle_xz)
+            print("lflangle_xy is:", lflangle_xy)
+            
+            print('-'*50)
+            
+            print("rflexor_xy is:", rflexor_xy_angle)
+            print("rflexor_xz is:", rflexor_xz_angle)
+            print("rflangle_xz is:", rflangle_xz)
+            print("rflangle_xy is:", rflangle_xy)
+            """
+            
+            
+            if lflangle_xz < 0:
+                lflangle_xz = 0
+            elif lflangle_xz > 180:
+                lflangle_xz = 180
+            if lflangle_xy < 0:
+                lflangle_xy = 0
+            elif lflangle_xy > 180:
+                lflangle_xy = 180
+
+                
+            if rflangle_xz < 0:
+                rflangle_xz = 0
+            elif rflangle_xz > 180:
+                rflangle_xz = 180
+            if rflangle_xy < 0:
+                rflangle_xy = 0
+            elif rflangle_xy > 180:
+                rflangle_xy = 180
+            
+                
+            lflangle = round(max(0, min(((90 - lshangle)/90 * lflangle_xy + lshangle/90 * lflangle_xz), 180))/2)
+            rflangle = round(max(0, min(((90 - rshangle)/90 * rflangle_xy + rshangle/90 * rflangle_xz), 180))/2)
+            
+            print('lflangle is:', lflangle)
+            print('rflangle is:', rflangle)
+            
+            lshangle = round(trig_angle_to_servo_angle(lshangle, 'left_shoulder'))
+            rshangle = round(trig_angle_to_servo_angle(rshangle, 'right_shoulder'))
+            
+            if lshangle < 0:
+                lshangle = 0
+            elif lshangle > 180:
+                lshangle = 180
+            if rshangle < 0:
+                rshangle = 0
+            elif rshangle > 180:
+                rshangle = 180
+                
+            print('ANGLE IS:', rshangle)
+            print('#'*50)
+
+            
+            msg = ''
+            msg += 'left_shoulder' + INTERNAL_DELIMITER + str(lshangle) + LINE_DELIMITER + 'right_shoulder' + INTERNAL_DELIMITER + str(rshangle) + LINE_DELIMITER + 'left_elbow' + INTERNAL_DELIMITER + str(lflangle) + LINE_DELIMITER + 'right_elbow' + INTERNAL_DELIMITER + str(rflangle) + LINE_DELIMITER + 'head' + INTERNAL_DELIMITER + str(hangle) + LINE_DELIMITER
+
+            
+            
+            
+            
+        client.publish(topic, msg)
         
 
         
 
+        
     # Initialize the pose landmarker model
     base_options = python.BaseOptions(model_asset_path=model)
     options = vision.PoseLandmarkerOptions(
@@ -298,41 +337,58 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
                 for i, landmark in enumerate(pose_landmarks_proto.landmark):
                     x_coord = int(landmark.x * width)
                     y_coord = int(landmark.y * height)
-                    z_coord = landmark.z
+                    z_coord = int(landmark.z * 100)
 
                     # Display coordinates next to the landmark
                     if i == 11: #left shoulder
                         y_shift = -110
-                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_text = f'({x_coord}, {y_coord}, {z_coord})'
                         coord_location = (x_coord, y_coord + y_shift)
                         cv2.putText(current_frame, coord_text, coord_location,
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     font_size, text_color2, font_thickness, cv2.LINE_AA)
                    
-                    if i == 12: #right shoulder
+                    elif i == 12: #right shoulder
                         y_shift = -110
-                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_text = f'({x_coord}, {y_coord}, {z_coord})'
+                        
                         coord_location = (x_coord, y_coord + y_shift)
                         cv2.putText(current_frame, coord_text, coord_location,
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     font_size, text_color2, font_thickness, cv2.LINE_AA)
 
-                    if i == 13: #left elbow
+                    elif i == 13: #left elbow
                         y_shift = -110
-                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_text = f'({x_coord}, {y_coord}, {z_coord})'
                         coord_location = (x_coord, y_coord + y_shift)
                         cv2.putText(current_frame, coord_text, coord_location,
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     font_size, text_color2, font_thickness, cv2.LINE_AA)
                     
-                    if i == 14: #right elbow
+                    elif i == 14: #right elbow
                         y_shift = -110
-                        coord_text = f'({x_coord}, {y_coord})'
+                        coord_text = f'({x_coord}, {y_coord}, {z_coord})'
                         coord_location = (x_coord, y_coord + y_shift)
                         cv2.putText(current_frame, coord_text, coord_location,
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     font_size, text_color2, font_thickness, cv2.LINE_AA)
-
+                    
+                    elif i == 19: #left index finger
+                        y_shift = -110
+                        coord_text = f'({x_coord}, {y_coord}, {z_coord})'
+                        coord_location = (x_coord, y_coord + y_shift)
+                        cv2.putText(current_frame, coord_text, coord_location,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    font_size, text_color2, font_thickness, cv2.LINE_AA)
+                        
+                    elif i == 20: #right index finger
+                        y_shift = -110
+                        coord_text = f'({x_coord}, {y_coord}, {z_coord})'
+                        coord_location = (x_coord, y_coord + y_shift)
+                        cv2.putText(current_frame, coord_text, coord_location,
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    font_size, text_color2, font_thickness, cv2.LINE_AA)
+ 
                 mp_drawing.draw_landmarks(
                     current_frame,
                     pose_landmarks_proto,
@@ -355,34 +411,10 @@ s      min_pose_presence_confidence: The minimum confidence score of pose
         # Stop the program if the ESC key is pressed.
         if cv2.waitKey(1) == 27:
             break
-
+        
     detector.close()
     cap.release()
     cv2.destroyAllWindows()
-
-def pos_to_angle(cur_pos, dimension, name):
-    rewrite = False
-    df = pd.read_csv(f'{name}.dat', index_col='names')
-    oldmax = df.loc[dimension]['max']
-    oldmin = df.loc[dimension]['min']
-    
-    if cur_pos > oldmax:
-        angle = 180
-        df.loc[dimension]['max'] = cur_pos
-        rewrite = True
-        
-    elif cur_pos < oldmin:
-        angle = 0
-        df.loc[dimension]['min'] = cur_pos
-        rewrite = True
-        
-    else:
-        angle = ((cur_pos - oldmin) / (oldmax - oldmin)) * (180 - 0) + 0
-        
-    if rewrite:
-        df.to_csv(f'{name}.dat')
-    
-    return angle
 
     
     
@@ -446,6 +478,70 @@ def main():
         args.outputSegmentationMasks,
         int(args.cameraId), args.frameWidth, args.frameHeight)
 
+#############
+# MATH SECTION
+###############
+def calculate_angle(landmarks1, landmarks2, dims):
+    if dims == ['x', 'y']:
+        a1, b1 = landmarks1[0].x, landmarks1[0].y
+        a2, b2 = landmarks1[1].x, landmarks1[1].y
 
+        a3, b3 = landmarks2[0].x, landmarks2[0].y
+        a4, b4 = landmarks2[1].x, landmarks2[1].y
+        
+    elif dims == ['y', 'z']:
+        a1, b1 = landmarks1[0].y, landmarks1[0].z
+        a2, b2 = landmarks1[1].y, landmarks1[1].z
+
+        a3, b3 = landmarks2[0].y, landmarks2[0].z
+        a4, b4 = landmarks2[1].y, landmarks2[1].z
+
+    elif dims == ['x', 'z']:
+        a1, b1 = landmarks1[0].x, landmarks1[0].z
+        a2, b2 = landmarks1[1].x, landmarks1[1].z
+
+        a3, b3 = landmarks2[0].x, landmarks2[0].z
+        a4, b4 = landmarks2[1].x, landmarks2[1].z
+    # Calculate vectors
+    vector1 = (a1 - a2, b1 - b2)
+    vector2 = (a3 - a4, b3 - b4)
+
+    # Calculate dot product
+    dot_product = vector1[0] * vector2[0] + vector1[1] * vector2[1]
+
+    # Calculate magnitudes
+    magnitude1 = math.sqrt(vector1[0]**2 + vector1[1]**2)
+    magnitude2 = math.sqrt(vector2[0]**2 + vector2[1]**2)
+
+    # Calculate angle in radians
+    angle_rad = math.acos(dot_product / (magnitude1 * magnitude2))
+
+    # Convert angle to degrees
+    angle_deg = math.degrees(angle_rad)
+
+    return angle_deg
+
+def trig_angle_to_servo_angle(trig_angle, servo_name):
+    oldmin = 1
+    oldmax = 2
+    if 'shoulder' in servo_name:
+        oldmin = SHOULDER_RANGE[0]
+        oldmax = SHOULDER_RANGE[1]
+    elif 'lflexor_xz' in servo_name:
+        oldmin = LFLEXOR_XZ_RANGE[0]
+        oldmax = LFLEXOR_XZ_RANGE[1]
+    elif 'lflexor_xy' in servo_name:
+        oldmin = LFLEXOR_XY_RANGE[0]
+        oldmax = LFLEXOR_XY_RANGE[1]
+    elif 'head' in servo_name:
+        oldmin = HEAD_RANGE[0]
+        oldmax = HEAD_RANGE[1]
+        
+    servo_angle = ((trig_angle - oldmin) / (oldmax - oldmin)) * (180 - 0) + 0
+    return servo_angle
+
+    
 if __name__ == '__main__':
     main()
+
+    
