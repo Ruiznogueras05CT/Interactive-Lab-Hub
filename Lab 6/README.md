@@ -2,7 +2,7 @@
 
 **NAMES OF COLLABORATORS HERE**
 
-Ben Setel, Kenneth Lee, Yifan Yu, Gloria Hu, Michael Hanlon
+Gilberto Ruiz, Ben Setel, Kenneth Lee, Yifan Yu, Gloria Hu, Michael Hanlon
 
 ## Prep
 
