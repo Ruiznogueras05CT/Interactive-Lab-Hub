@@ -1,4 +1,4 @@
-## Project Name: Byte the Robot
+# Project Name: Byte the Robot
 
 **COLLABORATORS** 
 Gilberto Ruiz, Gloria Hu, Ben Setel, Kenneth Lee, Yifan Yu, Michael Hanlon 
